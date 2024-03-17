@@ -7,6 +7,19 @@
 #include <errno.h>
 #include <unistd.h>
 
+void read_bytes(int fd, uint32_t len, void* buffer){
+	uint32_t bytesRead = 0;
+	int result;
+	while (bytesRead < len){
+		result = read(fd, buffer + bytesRead, len - bytesRead);
+		if (result < 1){
+			printf("Read failed: %s\n", strerror(errno));
+			exit(1);
+		}
+		bytesRead += result;
+	}
+}
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -85,9 +98,31 @@ int main() {
 	accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
 	//print the client socket structure
-	printf("Client address: %s\n", inet_ntoa(client_addr.sin_addr));
-	printf("Client port: %d\n", ntohs(client_addr.sin_port));
+
 	
+	uint32_t size = 0;
+	char* buffer = 0;
+	read_bytes(server_fd, sizeof(size), (void*)&size);
+	buffer = malloc(size);
+	read_bytes(server_fd, size, (void*)buffer);
+
+	printf("Received: %s\n", buffer);
+	free(buffer);
+
+	char *response = "HTTP/1.1 200 OK\r\n\r\n";
+	ssize_t bytes_written = write(server_fd, response, strlen(response));
+
+	if (bytes_written < 0) {
+		printf("Write failed: %s\n", strerror(errno));
+		return 1;
+	} else if (bytes_written < strlen(response)) {
+		printf("Write failed: wrote less than expected\n");
+		return 1;
+	} else {
+		printf("Response sent\n");
+	}
+
+
 	close(server_fd);
 
 	return 0;
