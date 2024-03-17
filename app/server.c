@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <asm-generic/socket.h>
 
 int main() {
 	// Disable output buffering
@@ -14,48 +15,81 @@ int main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	printf("Logs from your program will appear here!\n");
 
-	// Uncomment this block to pass the first stage
-	//
-	// int server_fd, client_addr_len;
-	// struct sockaddr_in client_addr;
-	//
-	// server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	// if (server_fd == -1) {
-	// 	printf("Socket creation failed: %s...\n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// // Since the tester restarts your program quite often, setting REUSE_PORT
-	// // ensures that we don't run into 'Address already in use' errors
-	// int reuse = 1;
-	// if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
-	// 	printf("SO_REUSEPORT failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// struct sockaddr_in serv_addr = { .sin_family = AF_INET ,
-	// 								 .sin_port = htons(4221),
-	// 								 .sin_addr = { htonl(INADDR_ANY) },
-	// 								};
-	//
-	// if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
-	// 	printf("Bind failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// int connection_backlog = 5;
-	// if (listen(server_fd, connection_backlog) != 0) {
-	// 	printf("Listen failed: %s \n", strerror(errno));
-	// 	return 1;
-	// }
-	//
-	// printf("Waiting for a client to connect...\n");
-	// client_addr_len = sizeof(client_addr);
-	//
-	// accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-	// printf("Client connected\n");
-	//
-	// close(server_fd);
+	//Uncomment this block to pass the first stage
+
+	int server_fd, client_addr_len;
+	struct sockaddr_in client_addr;
+	
+	// Create a socket
+	// AF_INET: Address Family for IPv4
+	// SOCK_STREAM: Provides sequenced, reliable, two-way, connection-based byte streams
+	// 0: Protocol value for Internet Protocol (IP)
+	// Returns a file descriptor for the socket (a non-negative integer)
+	// On error, -1 is returned
+
+	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (server_fd == -1) {
+		printf("Socket creation failed: %s...\n", strerror(errno));
+		return 1;
+	}
+	
+	// Since the tester restarts your program quite often, setting REUSE_PORT
+	// ensures that we don't run into 'Address already in use' errors
+	// setsockopt() is used to set the socket options
+	// SO_REUSEPORT: Allows multiple sockets to be bound to the same port
+	// &reuse: Pointer to the value of the option
+	int reuse = 1;
+	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0) {
+		printf("SO_REUSEPORT failed: %s \n", strerror(errno));
+		return 1;
+	}
+	
+	// create a sockaddr_in struct for the server
+	// sin_family: Address family (AF_INET)
+	// sin_port: Port number (in network byte order) / htons converts the port number to network byte order
+	// sin_addr: IP address (INADDR_ANY: Accept any incoming messages) / htonl converts the IP address to network byte order
+
+	struct sockaddr_in serv_addr = { .sin_family = AF_INET ,
+									 .sin_port = htons(4221),
+									 .sin_addr = { htonl(INADDR_ANY) },
+									};
+	
+	// Bind the socket to the address and port number specified in serv_addr
+	// Returns 0 on success, -1 on error
+	if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
+		printf("Bind failed: %s \n", strerror(errno));
+		return 1;
+	}
+	
+	// Listen for incoming connections
+	// connection_backlog: Maximum length of the queue of pending connections
+	// Returns 0 on success, -1 on error
+
+
+	int connection_backlog = 5;
+	if (listen(server_fd, connection_backlog) != 0) {
+		printf("Listen failed: %s \n", strerror(errno));
+		return 1;
+	}
+	
+	printf("Waiting for a client to connect...\n");
+
+	// Accept a connection
+	// client_addr: Address of the client
+	// client_addr_len: Length of the client address
+
+	client_addr_len = sizeof(client_addr);
+	
+	// Returns a file descriptor for the accepted socket (a non-negative integer)
+	// On error, -1 is returned
+
+	accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	printf("Client connected\n");
+	//print the client socket structure
+	printf("Client address: %s\n", inet_ntoa(client_addr.sin_addr));
+	printf("Client port: %d\n", ntohs(client_addr.sin_port));
+	
+	close(server_fd);
 
 	return 0;
 }
