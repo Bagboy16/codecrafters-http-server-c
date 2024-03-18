@@ -7,6 +7,9 @@
 #include <errno.h>
 #include <unistd.h>
 
+
+
+
 int main()
 {
 	// Disable output buffering
@@ -107,10 +110,31 @@ int main()
 		printf("Read failed: %s\n", strerror(errno));
 		exit(1);
 	}
-	printf("Received: %s\n", buffer);
 
+	char* req_ln = strtok(buffer, "\r\n");
+	if (req_ln == NULL)
+	{
+		printf("Invalid request\n");
+		exit(1);
+	}
+	char *method = strtok(req_ln, " ");
+	char *path = strtok(NULL, " ");
+	char *version = strtok(NULL, " ");
 	char *response = "HTTP/1.1 200 OK\r\n\r\n";
-	write(client_fd, response, strlen(response));
+	char *not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
+	if (method == NULL || path == NULL || version == NULL)
+	{
+		printf("Invalid request\n");
+		exit(1);
+	}
+	if (strcmp(path, "/") == 0)
+	{
+		write(client_fd, response, strlen(response));
+	}
+	else
+	{
+		write(client_fd, not_found, strlen(not_found));
+	}
 
 	// Close the socket
 	// Returns 0 on success, -1 on
