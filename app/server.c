@@ -7,9 +7,6 @@
 #include <errno.h>
 #include <unistd.h>
 
-
-
-
 int main()
 {
 	// Disable output buffering
@@ -111,7 +108,7 @@ int main()
 		exit(1);
 	}
 
-	char* req_ln = strtok(buffer, "\r\n");
+	char *req_ln = strtok(buffer, "\r\n");
 	if (req_ln == NULL)
 	{
 		printf("Invalid request\n");
@@ -127,13 +124,27 @@ int main()
 		printf("Invalid request\n");
 		exit(1);
 	}
-	if (strcmp(path, "/") == 0)
+	char *data = strstr(path, "/echo/");
+	if (data != NULL)
 	{
-		write(client_fd, response, strlen(response));
+		char *content = data + strlen("/echo/");
+		printf("Content: %s\n", content);
+		char *responseFormat = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+		char response[1024];
+		sprintf(response, responseFormat, strlen(content), content);
+		send(client_fd, response, strlen(response), 0);
 	}
 	else
 	{
-		write(client_fd, not_found, strlen(not_found));
+
+		if (strcmp(path, "/") == 0)
+		{
+			write(client_fd, response, strlen(response));
+		}
+		else
+		{
+			write(client_fd, not_found, strlen(not_found));
+		}
 	}
 
 	// Close the socket
