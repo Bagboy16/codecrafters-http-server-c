@@ -7,8 +7,13 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdbool.h>
 
-void *handle_client(void* client_socket){
+bool directory = false;
+char *filepath;
+
+void *handle_client(void *client_socket)
+{
 
 	int client_fd = *(int *)client_socket;
 
@@ -71,120 +76,201 @@ void *handle_client(void* client_socket){
 	else
 	{
 
-		if (strcmp(path, "/") == 0)
+		if (directory == true)
 		{
-			write(client_fd, response, strlen(response));
+			char *fl_name = strstr(path, "/files/");
+			char* filename = fl_name + strlen("/files/");
+			printf("Filename: %s\n", filename);
+			printf("Filepath: %s\n", filepath);
+			char *fullpath = malloc(strlen(filepath) + strlen(filename) + 1);
+			if (fullpath == NULL)
+			{
+				printf("Memory allocation failed: %s\n", strerror(errno));
+				return (void *)1;
+			}
+			strcpy(fullpath, filepath);
+			strcat(fullpath, filename);
+			FILE *file = fopen(fullpath, "rb");
+			if (file == NULL)
+			{
+				printf("File not found\n");
+				write(client_fd, not_found, strlen(not_found));
+			}
+			else
+			{
+				char *buffer;
+				fseek(file, 0, SEEK_END);
+				int64_t filesize = ftell(file);
+				if (filesize < 0)
+				{
+					printf("Filesize failed: %s\n", strerror(errno));
+					return (void *)1;
+				}
+				fseek(file, 0, SEEK_SET);
+				buffer = malloc(filesize + 1);
+				if (buffer == NULL)
+				{
+
+					printf("Memory allocation failed on file buffer: %s\nFilesize: %d", strerror(errno), filesize);
+					return (void *)1;
+				}
+				size_t bytesRead = fread(buffer, 1, filesize, file);
+				if (bytesRead < filesize)
+				{
+					printf("Read failed: %s\n", strerror(errno));
+					return (void *)1;
+				}
+				buffer[bytesRead] = '\0';
+				char responseFormat[] = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s";
+				size_t responseSize = strlen(responseFormat) + filesize;
+				char *response = malloc(responseSize + 1);
+				if (response == NULL)
+				{
+					printf("Memory allocation failed on response buffer: %s\n", strerror(errno));
+					return (void *)1;
+				}
+				snprintf(response, responseSize + 1, responseFormat, filesize, buffer);
+				send(client_fd, response, responseSize, 0);
+				free(buffer);
+				free(response);
+				fclose(file);
+			}
+		} else {
+			if (strcmp(path, "/") == 0)
+			{
+				write(client_fd, response, strlen(response));
+			}
+			else
+			{
+				write(client_fd, not_found, strlen(not_found));
+			}
 		}
-		else
+	}
+
+
+		// Close the socket
+		// Returns 0 on success, -1 on
+		close(client_fd);
+		free(client_socket);
+		return (void *)0;
+	}
+
+	int main(int argc, char **argv)
+	{
+
+		// Disable output buffering
+		setbuf(stdout, NULL);
+
+		printf("argc: %d\n", argc);
+		for (int i = 0; i < argc; i++)
 		{
-			write(client_fd, not_found, strlen(not_found));
+			printf("argv[%d]: %s\n", i, argv[i]);
+			if (strcmp(argv[i], "--directory") == 0)
+			{
+				directory = true;
+				filepath = argv[i + 1];
+				break;
+			}
 		}
-	}
 
-	// Close the socket
-	// Returns 0 on success, -1 on
-	close(client_fd);
-	return (void *)0;
-}
+		// You can use print statements as follows for debugging, they'll be visible when running tests.
+		printf("Logs from your program will appear here!\n");
 
-int main()
-{
-	// Disable output buffering
-	setbuf(stdout, NULL);
+		// Uncomment this block to pass the first stage
 
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	printf("Logs from your program will appear here!\n");
+		int server_fd, client_addr_len;
+		int client_fd;
+		struct sockaddr_in client_addr;
 
-	// Uncomment this block to pass the first stage
+		// Create a socket
+		// AF_INET: Address Family for IPv4
+		// SOCK_STREAM: Provides sequenced, reliable, two-way, connection-based byte streams
+		// 0: Protocol value for Internet Protocol (IP)
+		// Returns a file descriptor for the socket (a non-negative integer)
+		// On error, -1 is returned
 
-	int server_fd, client_addr_len;
-	int client_fd;
-	struct sockaddr_in client_addr;
-
-	// Create a socket
-	// AF_INET: Address Family for IPv4
-	// SOCK_STREAM: Provides sequenced, reliable, two-way, connection-based byte streams
-	// 0: Protocol value for Internet Protocol (IP)
-	// Returns a file descriptor for the socket (a non-negative integer)
-	// On error, -1 is returned
-
-	server_fd = socket(AF_INET, SOCK_STREAM, 0);
-	if (server_fd == -1)
-	{
-		printf("Socket creation failed: %s...\n", strerror(errno));
-		return 1;
-	}
-
-	// Since the tester restarts your program quite often, setting REUSE_PORT
-	// ensures that we don't run into 'Address already in use' errors
-	// setsockopt() is used to set the socket options
-	// SO_REUSEPORT: Allows multiple sockets to be bound to the same port
-	// &reuse: Pointer to the value of the option
-	int reuse = 1;
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0)
-	{
-		printf("SO_REUSEPORT failed: %s \n", strerror(errno));
-		return 1;
-	}
-
-	// create a sockaddr_in struct for the server
-	// sin_family: Address family (AF_INET)
-	// sin_port: Port number (in network byte order) / htons converts the port number to network byte order
-	// sin_addr: IP address (INADDR_ANY: Accept any incoming messages) / htonl converts the IP address to network byte order
-
-	struct sockaddr_in serv_addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(4221),
-		.sin_addr = {htonl(INADDR_ANY)},
-	};
-
-	// Bind the socket to the address and port number specified in serv_addr
-	// Returns 0 on success, -1 on error
-	if (bind(server_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) != 0)
-	{
-		printf("Bind failed: %s \n", strerror(errno));
-		return 1;
-	}
-
-	// Listen for incoming connections
-	// connection_backlog: Maximum length of the queue of pending connections
-	// Returns 0 on success, -1 on error
-
-	int connection_backlog = 5;
-	if (listen(server_fd, connection_backlog) != 0)
-	{
-		printf("Listen failed: %s \n", strerror(errno));
-		return 1;
-	}
-	
-	uint16_t threadCounter = 0;
-
-	printf("Waiting for a client to connect...\n");
-
-	// Accept a connection
-	// client_addr: Address of the client
-	// client_addr_len: Length of the client address
-
-	client_addr_len = sizeof(client_addr);
-
-	// Returns a file descriptor for the accepted socket (a non-negative integer)
-	// On error, -1 is returned
-	for (;;){
-		
-		if ((client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
+		server_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (server_fd == -1)
 		{
-			printf("Accept failed: %s \n", strerror(errno));
+			printf("Socket creation failed: %s...\n", strerror(errno));
 			return 1;
 		}
-		printf("Client connected\n");
-		pthread_t t;
-		pthread_create(&t, NULL, handle_client, &client_fd);
-		threadCounter++;
+
+		// Since the tester restarts your program quite often, setting REUSE_PORT
+		// ensures that we don't run into 'Address already in use' errors
+		// setsockopt() is used to set the socket options
+		// SO_REUSEPORT: Allows multiple sockets to be bound to the same port
+		// &reuse: Pointer to the value of the option
+		int reuse = 1;
+		if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse)) < 0)
+		{
+			printf("SO_REUSEPORT failed: %s \n", strerror(errno));
+			return 1;
+		}
+
+		// create a sockaddr_in struct for the server
+		// sin_family: Address family (AF_INET)
+		// sin_port: Port number (in network byte order) / htons converts the port number to network byte order
+		// sin_addr: IP address (INADDR_ANY: Accept any incoming messages) / htonl converts the IP address to network byte order
+
+		struct sockaddr_in serv_addr = {
+			.sin_family = AF_INET,
+			.sin_port = htons(4221),
+			.sin_addr = {htonl(INADDR_ANY)},
+		};
+
+		// Bind the socket to the address and port number specified in serv_addr
+		// Returns 0 on success, -1 on error
+		if (bind(server_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) != 0)
+		{
+			printf("Bind failed: %s \n", strerror(errno));
+			return 1;
+		}
+
+		// Listen for incoming connections
+		// connection_backlog: Maximum length of the queue of pending connections
+		// Returns 0 on success, -1 on error
+
+		int connection_backlog = 5;
+		if (listen(server_fd, connection_backlog) != 0)
+		{
+			printf("Listen failed: %s \n", strerror(errno));
+			return 1;
+		}
+
+		uint16_t threadCounter = 0;
+
+		printf("Waiting for a client to connect...\n");
+
+		// Accept a connection
+		// client_addr: Address of the client
+		// client_addr_len: Length of the client address
+
+		client_addr_len = sizeof(client_addr);
+
+		// Returns a file descriptor for the accepted socket (a non-negative integer)
+		// On error, -1 is returned
+		for (;;)
+		{
+			int *pclient_fd = malloc(sizeof(int));
+			if (pclient_fd == NULL)
+			{
+				printf("Memory allocation failed: %s \n", strerror(errno));
+				return 1;
+			}
+			if ((*pclient_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
+			{
+				printf("Accept failed: %s \n", strerror(errno));
+				free(pclient_fd);
+				return 1;
+			}
+			printf("Client connected\n");
+			pthread_t t;
+			pthread_create(&t, NULL, handle_client, pclient_fd);
+			pthread_detach(t);
+		}
+
+		// print the client socket structure
+
+		return 0;
 	}
-		
-	// print the client socket structure
-
-	
-
-	return 0;
-}
