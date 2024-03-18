@@ -6,6 +6,86 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
+
+void *handle_client(void* client_socket){
+
+	int client_fd = *(int *)client_socket;
+
+	uint32_t size = 0;
+	char buffer[1024];
+
+	uint32_t bytesRead = 0;
+	bytesRead = read(client_fd, buffer, 1024);
+	if (bytesRead < 1)
+	{
+		printf("Read failed: %s\n", strerror(errno));
+		return (void *)1;
+	}
+
+	char *req_ln = strtok(buffer, "\r\n");
+	char *req_data = strtok(NULL, "\r\n");
+	char *user_agent_ln;
+	while (req_data != NULL)
+	{
+		if (strstr(req_data, "User-Agent") != NULL)
+		{
+			user_agent_ln = req_data;
+			break;
+		}
+		req_data = strtok(NULL, "\r\n");
+	}
+	if (req_ln == NULL)
+	{
+		printf("Invalid request\n");
+		return (void *)1;
+	}
+	char *method = strtok(req_ln, " ");
+	char *path = strtok(NULL, " ");
+	char *version = strtok(NULL, " ");
+	char *response = "HTTP/1.1 200 OK\r\n\r\n";
+	char *not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
+	if (method == NULL || path == NULL || version == NULL)
+	{
+		printf("Invalid request\n");
+		return (void *)1;
+	}
+	char *data;
+	if ((data = strstr(path, "/echo/")) != NULL)
+	{
+		char *content = data + strlen("/echo/");
+		printf("Content: %s\n", content);
+		char *responseFormat = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+		char response[1024];
+		sprintf(response, responseFormat, strlen(content), content);
+		send(client_fd, response, strlen(response), 0);
+	}
+	else if ((data = strstr(path, "/user-agent")) != NULL)
+	{
+		char *content = user_agent_ln + strlen("User-Agent: ");
+		char response[1024];
+		char responseFormat[] = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
+		sprintf(response, responseFormat, strlen(content), content);
+		send(client_fd, response, strlen(response), 0);
+	}
+	else
+	{
+
+		if (strcmp(path, "/") == 0)
+		{
+			write(client_fd, response, strlen(response));
+		}
+		else
+		{
+			write(client_fd, not_found, strlen(not_found));
+		}
+	}
+
+	// Close the socket
+	// Returns 0 on success, -1 on
+	close(client_fd);
+	return (void *)0;
+}
 
 int main()
 {
@@ -76,6 +156,8 @@ int main()
 		printf("Listen failed: %s \n", strerror(errno));
 		return 1;
 	}
+	
+	uint16_t threadCounter = 0;
 
 	printf("Waiting for a client to connect...\n");
 
@@ -87,86 +169,22 @@ int main()
 
 	// Returns a file descriptor for the accepted socket (a non-negative integer)
 	// On error, -1 is returned
-
-	if ((client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
-	{
-		printf("Accept failed: %s \n", strerror(errno));
-		return 1;
+	for (;;){
+		
+		if ((client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
+		{
+			printf("Accept failed: %s \n", strerror(errno));
+			return 1;
+		}
+		printf("Client connected\n");
+		pthread_t t;
+		pthread_create(&t, NULL, handle_client, &client_fd);
+		threadCounter++;
 	}
-	printf("Client connected\n");
-
+		
 	// print the client socket structure
 
-	uint32_t size = 0;
-	char buffer[1024];
-
-	uint32_t bytesRead = 0;
-	bytesRead = read(client_fd, buffer, 1024);
-	if (bytesRead < 1)
-	{
-		printf("Read failed: %s\n", strerror(errno));
-		exit(1);
-	}
-
-	char *req_ln = strtok(buffer, "\r\n");
-	char* req_data = strtok(NULL, "\r\n");
-	char *user_agent_ln;
-	while (req_data != NULL)
-	{
-		if (strstr(req_data, "User-Agent") != NULL)
-		{
-			user_agent_ln = req_data;
-			break;
-		}
-		req_data = strtok(NULL, "\r\n");
-	}
-	if (req_ln == NULL)
-	{
-		printf("Invalid request\n");
-		exit(1);
-	}
-	char *method = strtok(req_ln, " ");
-	char *path = strtok(NULL, " ");
-	char *version = strtok(NULL, " ");	
-	char *response = "HTTP/1.1 200 OK\r\n\r\n";
-	char *not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
-	if (method == NULL || path == NULL || version == NULL)
-	{
-		printf("Invalid request\n");
-		exit(1);
-	}
-	char *data;
-	if ((data = strstr(path, "/echo/")) != NULL)
-	{
-		char *content = data + strlen("/echo/");
-		printf("Content: %s\n", content);
-		char *responseFormat = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
-		char response[1024];
-		sprintf(response, responseFormat, strlen(content), content);
-		send(client_fd, response, strlen(response), 0);
-	} else if ((data = strstr(path, "/user-agent")) != NULL){
-		char* content = user_agent_ln + strlen("User-Agent: ");
-		char response[1024];
-		char responseFormat[] = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
-		sprintf(response, responseFormat, strlen(content), content);
-		send(client_fd, response, strlen(response), 0);
-	}
-	else
-	{
-
-		if (strcmp(path, "/") == 0)
-		{
-			write(client_fd, response, strlen(response));
-		}
-		else
-		{
-			write(client_fd, not_found, strlen(not_found));
-		}
-	}
-
-	// Close the socket
-	// Returns 0 on success, -1 on
-	close(client_fd);
+	
 
 	return 0;
 }
