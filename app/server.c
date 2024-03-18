@@ -109,6 +109,17 @@ int main()
 	}
 
 	char *req_ln = strtok(buffer, "\r\n");
+	char* req_data = strtok(NULL, "\r\n");
+	char *user_agent_ln;
+	while (req_data != NULL)
+	{
+		if (strstr(req_data, "User-Agent") != NULL)
+		{
+			user_agent_ln = req_data;
+			break;
+		}
+		req_data = strtok(NULL, "\r\n");
+	}
 	if (req_ln == NULL)
 	{
 		printf("Invalid request\n");
@@ -116,7 +127,7 @@ int main()
 	}
 	char *method = strtok(req_ln, " ");
 	char *path = strtok(NULL, " ");
-	char *version = strtok(NULL, " ");
+	char *version = strtok(NULL, " ");	
 	char *response = "HTTP/1.1 200 OK\r\n\r\n";
 	char *not_found = "HTTP/1.1 404 Not Found\r\n\r\n";
 	if (method == NULL || path == NULL || version == NULL)
@@ -124,13 +135,19 @@ int main()
 		printf("Invalid request\n");
 		exit(1);
 	}
-	char *data = strstr(path, "/echo/");
-	if (data != NULL)
+	char *data;
+	if ((data = strstr(path, "/echo/")) != NULL)
 	{
 		char *content = data + strlen("/echo/");
 		printf("Content: %s\n", content);
 		char *responseFormat = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 		char response[1024];
+		sprintf(response, responseFormat, strlen(content), content);
+		send(client_fd, response, strlen(response), 0);
+	} else if ((data = strstr(path, "/user-agent")) != NULL){
+		char* content = user_agent_ln + strlen("User-Agent: ");
+		char response[1024];
+		char responseFormat[] = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s";
 		sprintf(response, responseFormat, strlen(content), content);
 		send(client_fd, response, strlen(response), 0);
 	}
